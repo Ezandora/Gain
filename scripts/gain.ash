@@ -111,7 +111,7 @@ void initialiseModifiers()
 initialiseModifiers();
 
 //FIXME support asdon
-string __gain_version = "1.0";
+string __gain_version = "1.0.1";
 boolean __gain_setting_confirm = false;
 
 boolean [item] __modify_blocked_items = $items[M-242,snake,sparkler,Mer-kin strongjuice,Mer-kin smartjuice,Mer-kin cooljuice];
@@ -346,6 +346,8 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 				if (entry.it.fullness > 0 || entry.it.inebriety > 0 || entry.it.spleen > 0) //FIXME allow such things?
 					continue;
 				if (!entry.it.tradeable && entry.it.available_amount() == 0)
+					continue;
+				if (entry.it.tradeable && entry.it.mall_price() >= 100000) //too expensive
 					continue;
 				if (!entry.it.tradeable && !entry.it.reusable)
 				{
