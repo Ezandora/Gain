@@ -1,5 +1,6 @@
 # Gain
 Efficient buffing.
+
 How do I use it?
 ----------------
 First, install it by running this command in KoLmafia's graphical CLI:
