@@ -111,7 +111,7 @@ void initialiseModifiers()
 initialiseModifiers();
 
 //FIXME support asdon
-string __gain_version = "1.0.1";
+string __gain_version = "1.0.2";
 boolean __gain_setting_confirm = false;
 
 boolean [item] __modify_blocked_items = $items[M-242,snake,sparkler,Mer-kin strongjuice,Mer-kin smartjuice,Mer-kin cooljuice];
@@ -264,7 +264,13 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 			continue;
 		if (modifier_not_quite_right > 0.0 && !want_positive)
 			continue;
-			
+		if (my_path() == "G-Lover")
+		{
+			if (!it.contains_text("g") && !it.contains_text("G"))
+				continue;
+			if (!e.contains_text("g") && !e.contains_text("G"))
+				continue;
+		}
 		ModifierUpkeepEntry entry;
 		entry.e = e;
 		entry.type = MODIFIER_UPKEEP_ENTRY_TYPE_ITEM;
@@ -284,6 +290,11 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 			continue;
 		if (modifier_not_quite_right > 0.0 && !want_positive)
 			continue;
+		if (my_path() == "G-Lover")
+		{
+			if (!s.contains_text("g") && !s.contains_text("G"))
+				continue;
+		}
 		ModifierUpkeepEntry entry;
 		entry.e = e;
 		entry.type = MODIFIER_UPKEEP_ENTRY_TYPE_SKILL;
@@ -418,12 +429,24 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 			//if (key >= 40) abort("?");
 			
 			//execute:
+			int before_effect = entry.e.have_effect();
 			int amount = MAX(1, ceil(to_float(settings.minimum_turns_wanted - entry.e.have_effect()) / MAX(1.0, to_float(entry.turns_gotten_from_source))));
 			amount = MIN(10, amount);
 			if (entry.type == MODIFIER_UPKEEP_ENTRY_TYPE_ITEM)
 				use(amount, entry.it);
 			if (entry.type == MODIFIER_UPKEEP_ENTRY_TYPE_SKILL)
 				use_skill(amount, entry.s);
+			int after_effect = entry.e.have_effect();
+			if (after_effect == before_effect)
+			{
+				//use 1 future drug: Muscularactum
+				//You acquire an effect: The Strength... of the Future (0)
+				//zero turns, wasted someone's future drugs
+				refresh_status();
+				after_effect = entry.e.have_effect();
+				if (after_effect == before_effect)
+					abort("Mafia bug: " + entry.ModifierUpkeepEntryDescription() + " did not gain any turns.");
+			}
 			break;
 		}
 	}
@@ -479,7 +502,25 @@ string ModifierConvertUserModifierToMafia(string modifier)
 	if (modifier == "mp") return "maximum mp";
 	if (modifier == "hp") return "maximum hp";
 	if (modifier == "combat") return "combat rate";
+	if (modifier == "cold res") return "cold resistance";
+	if (modifier == "hot res") return "hot resistance";
+	if (modifier == "sleaze res") return "sleaze resistance";
+	if (modifier == "stench res") return "stench resistance";
+	if (modifier == "spooky res") return "spooky resistance";
 	return modifier;
+}
+
+
+void ModifierAddUserModifier(int [string] desired_modifiers, string current_modifier, int modifier_value)
+{
+	string converted_modifier = ModifierConvertUserModifierToMafia(current_modifier);
+	if (converted_modifier == "all res")
+	{
+		foreach s in $strings[cold resistance,hot resistance,sleaze resistance,stench resistance,spooky resistance]
+			desired_modifiers[s] = modifier_value;
+	}
+	else
+		desired_modifiers[converted_modifier] = modifier_value;
 }
 
 void main(string arguments)
@@ -513,7 +554,7 @@ void main(string arguments)
 		{
 			if (current_modifier != "")
 			{
-				desired_modifiers[ModifierConvertUserModifierToMafia(current_modifier)] = modifier_value;
+				ModifierAddUserModifier(desired_modifiers, current_modifier, modifier_value);
 				current_modifier = "";
 			}
 			modifier_value = argument.to_int();
@@ -527,7 +568,7 @@ void main(string arguments)
 	}
 	if (current_modifier != "" && modifier_value != 0)
 	{
-		desired_modifiers[ModifierConvertUserModifierToMafia(current_modifier)] = modifier_value;
+		ModifierAddUserModifier(desired_modifiers, current_modifier, modifier_value);
 		current_modifier = "";
 	}
 	
