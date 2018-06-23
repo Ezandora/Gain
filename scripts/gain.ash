@@ -111,7 +111,7 @@ void initialiseModifiers()
 initialiseModifiers();
 
 //FIXME support asdon
-string __gain_version = "1.0.2";
+string __gain_version = "1.0.3";
 boolean __gain_setting_confirm = false;
 
 boolean [item] __modify_blocked_items = $items[M-242,snake,sparkler,Mer-kin strongjuice,Mer-kin smartjuice,Mer-kin cooljuice];
@@ -304,28 +304,50 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 	}
 	
 	int breakout = 500;
+	float last_loop_value = -1.0;
+	boolean first = true;
 	while (breakout > 0)
 	{
 		breakout -= 1;
 		
-		boolean satisfied = true;
-		if (settings.minimum_value > 0 && settings.minimum_value > numeric_modifier(settings.modifier))
-			satisfied = false;
-		if (settings.minimum_value < 0 && settings.minimum_value < numeric_modifier(settings.modifier))
-			satisfied = false;
-		if (settings.modifier ≈ "muscle" && my_buffedstat($stat[muscle]) >= settings.minimum_value)
-			satisfied = true;
-		if (settings.modifier ≈ "mysticality" && my_buffedstat($stat[mysticality]) >= settings.minimum_value)
-			satisfied = true;
-		if (settings.modifier ≈ "moxie" && my_buffedstat($stat[moxie]) >= settings.minimum_value)
-			satisfied = true;
-		if (settings.modifier ≈ "maximum mp" && my_maxmp() >= settings.minimum_value)
-			satisfied = true;
-		if (settings.modifier ≈ "maximum hp" && my_maxhp() >= settings.minimum_value)
-			satisfied = true;
-		if (settings.modifier ≈ "familiar weight" && numeric_modifier(settings.modifier) + my_familiar().familiar_weight() >= settings.minimum_value) //FIXME support feasted familiars, because that's a complete pain
-			satisfied = true;
+		float relevant_value_for_modifier = numeric_modifier(settings.modifier);
+		
+		if (settings.modifier ≈ "muscle")
+			relevant_value_for_modifier = my_buffedstat($stat[muscle]);
+		if (settings.modifier ≈ "mysticality")
+			relevant_value_for_modifier = my_buffedstat($stat[mysticality]);
+		if (settings.modifier ≈ "moxie")
+			relevant_value_for_modifier = my_buffedstat($stat[moxie]);
+		if (settings.modifier ≈ "maximum mp")
+			relevant_value_for_modifier = my_maxmp();
+		if (settings.modifier ≈ "maximum hp")
+			relevant_value_for_modifier = my_maxhp();
+		if (settings.modifier ≈ "familiar weight")
+			relevant_value_for_modifier = numeric_modifier(settings.modifier) + my_familiar().familiar_weight(); //FIXME support feasted familiars, because that's a complete pain
 			
+			
+		boolean satisfied = true;
+		if (settings.minimum_value >= 0.0 && settings.minimum_value > relevant_value_for_modifier)
+			satisfied = false;
+		if (settings.minimum_value < 0.0 && settings.minimum_value < relevant_value_for_modifier)
+			satisfied = false;
+		if (satisfied)
+			break;
+			
+		
+		if (first)
+		{
+			first = false;
+		}
+		else
+		{
+			if (last_loop_value == relevant_value_for_modifier)
+			{
+				print("Stopping trying to gain a buff. Value of modifier " + settings.modifier + " is " +relevant_value_for_modifier + ", same as the previous " + relevant_value_for_modifier + ".", "red");
+				break;
+			}
+		}
+		last_loop_value = relevant_value_for_modifier;
 			
 		if (satisfied)
 			break;
