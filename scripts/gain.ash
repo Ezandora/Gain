@@ -111,7 +111,7 @@ void initialiseModifiers()
 initialiseModifiers();
 
 //FIXME support asdon
-string __gain_version = "1.0.3";
+string __gain_version = "1.0.4";
 boolean __gain_setting_confirm = false;
 
 boolean [item] __modify_blocked_items = $items[M-242,snake,sparkler,Mer-kin strongjuice,Mer-kin smartjuice,Mer-kin cooljuice];
@@ -371,7 +371,7 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 		/*for i from 0 to 20
 			print_html("possible_sources[" + i + "] ( " + possible_sources[i].ModifierUpkeepEntryEfficiency(settings) + " ) = " + possible_sources[i].to_json());
 		abort("well?");*/
-
+		boolean did_execute_one = false;
 		foreach key, entry in possible_sources
 		{
 			if (entry.type == MODIFIER_UPKEEP_ENTRY_TYPE_ITEM)
@@ -469,6 +469,11 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 				if (after_effect == before_effect)
 					abort("Mafia bug: " + entry.ModifierUpkeepEntryDescription() + " did not gain any turns.");
 			}
+			did_execute_one = true;
+			break;
+		}
+		if (!did_execute_one) //nothing left
+		{
 			break;
 		}
 	}
