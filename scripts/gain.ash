@@ -111,11 +111,16 @@ void initialiseModifiers()
 initialiseModifiers();
 
 //FIXME support asdon
-string __gain_version = "1.0.4";
+string __gain_version = "1.0.5";
 boolean __gain_setting_confirm = false;
 
 boolean [item] __modify_blocked_items = $items[M-242,snake,sparkler,Mer-kin strongjuice,Mer-kin smartjuice,Mer-kin cooljuice];
 boolean [skill] __modify_blocked_skills;
+
+int __maximum_meat_to_spend = 100000;
+
+int __starting_meat = -1;
+int __meat_spent = 0;
 if (my_class() == $class[turtle tamer])
 {
 	foreach s in $skills[Blessing of the Storm Tortoise,Blessing of She-Who-Was,Blessing of the War Snapper]
@@ -141,6 +146,7 @@ void initialiseMutuallyExclusiveEffects()
 	
 	__mutually_exclusive_effect_sets[__mutually_exclusive_effect_sets.count()] = $effects[Snarl of the Timberwolf,Scowl of the Auk,Stiff Upper Lip,Patient Smile,Quiet Determination,Arched Eyebrow of the Archmage,Wizard Squint,Quiet Judgement,Icy Glare,Wry Smile,Disco Leer,Disco Smirk,Suspicious Gaze,Knowing Smile,Quiet Desperation];
 	__mutually_exclusive_effect_sets[__mutually_exclusive_effect_sets.count()] = $effects[Song of the North,Song of Slowness,Song of Starch,Song of Sauce,Song of Bravado];
+	__mutually_exclusive_effect_sets[__mutually_exclusive_effect_sets.count()] = $effects[purple tongue,green tongue,orange tongue,red tongue,blue tongue];
 	
 	foreach key in __mutually_exclusive_effect_sets
 	{
@@ -183,6 +189,9 @@ Record ModifierUpkeepSettings
 	
 	int reasonable_turns_wanted;
 	//FIXME MPA, etc
+	
+	float maximum_efficiency;
+	boolean maximum_efficiency_set;
 };
 
 
@@ -242,6 +251,8 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 {
 	if (settings.minimum_turns_wanted < 0) settings.minimum_turns_wanted = 1;
 	if (settings.reasonable_turns_wanted == 0) settings.reasonable_turns_wanted = 20;
+	if (__starting_meat < 0) __starting_meat = my_meat();
+	
 	settings.modifier = settings.modifier.to_lower_case();
 	
 	ModifierUpkeepEntry [int] possible_sources;
@@ -256,6 +267,7 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 		if (!can_interact() && it.available_amount() + it.creatable_amount() == 0) continue;
 		
 		if (__modify_blocked_items[it]) continue;
+		if ($items[Shrieking Weasel holo-record,Power-Guy 2000 holo-record,Lucky Strikes holo-record,EMD holo-record,Superdrifter holo-record,The Pigs holo-record,Drunk Uncles holo-record] contains it && my_path() != "Nuclear Autumn") continue;
 		
 		if (it.fullness > 0 || it.inebriety > 0 || it.spleen > 0) //FIXME allow such things?
 			continue;
@@ -374,6 +386,7 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 		boolean did_execute_one = false;
 		foreach key, entry in possible_sources
 		{
+			int meat_cost = 0;
 			if (entry.type == MODIFIER_UPKEEP_ENTRY_TYPE_ITEM)
 			{
 				if (entry.it.fullness > 0 || entry.it.inebriety > 0 || entry.it.spleen > 0) //FIXME allow such things?
@@ -382,6 +395,11 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 					continue;
 				if (entry.it.tradeable && entry.it.mall_price() >= 100000) //too expensive
 					continue;
+				if (entry.it.tradeable)
+				{
+					meat_cost = entry.it.mall_price();
+					if (__meat_spent + meat_cost > __maximum_meat_to_spend) continue;
+				}
 				if (!entry.it.tradeable && !entry.it.reusable)
 				{
 					if (my_id() == 1557284)
@@ -440,7 +458,12 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 			}
 			if (entry.e.numeric_modifier_including_percentages_on_base_modifiers(settings.modifier) == 0.0) continue;
 			if (entry.e.have_effect() >= settings.minimum_turns_wanted) continue;
-			print_html(entry.ModifierUpkeepEntryDescription() + ": " + entry.ModifierUpkeepEntryEfficiency(settings) + " efficiency");
+			float entry_efficiency = entry.ModifierUpkeepEntryEfficiency(settings);
+			if (settings.maximum_efficiency_set && settings.maximum_efficiency < entry_efficiency)
+			{
+				break;
+			}
+			print_html(entry.ModifierUpkeepEntryDescription() + ": " + entry_efficiency + " efficiency");
 			
 			if (__gain_setting_confirm)
 			{
@@ -469,6 +492,7 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 				if (after_effect == before_effect)
 					abort("Mafia bug: " + entry.ModifierUpkeepEntryDescription() + " did not gain any turns.");
 			}
+			__meat_spent += meat_cost;
 			did_execute_one = true;
 			break;
 		}
@@ -513,13 +537,15 @@ void ModifierOutputExampleUsage()
 	print_html("<strong>gain 400 initiative</strong>: buff to 400 initiative, as efficiently as possible");
 	print_html("<strong>gain 20 familiar weight 50 turns</strong>: buff to 20 familiar weight, for a minimum of 50 turns");
 	print_html("<strong>gain 400 init 20 familiar weight 300 muscle 50 turns</strong>: buff familiar weight up to 20, initiative up to 400, and muscle up to 300, for 50 turns.");
-	
+	print_html("<strong>gain 10000 monster level 10000 maxmeatspent</strong>: spend 10k meat on +monster level");
 }
 
 string ModifierConvertUserModifierToMafia(string modifier)
 {
 	modifier = modifier.to_lower_case();
 	if (modifier == "init") return "initiative";
+	if (modifier == "item") return "item drop";
+	if (modifier == "meat") return "meat drop";
 	if (modifier == "mus") return "muscle";
 	if (modifier == "mys") return "mysticality";
 	if (modifier == "myst") return "mysticality";
@@ -528,6 +554,7 @@ string ModifierConvertUserModifierToMafia(string modifier)
 	if (modifier == "dr") return "damage reduction";
 	if (modifier == "mp") return "maximum mp";
 	if (modifier == "hp") return "maximum hp";
+	if (modifier == "ml") return "monster level";
 	if (modifier == "combat") return "combat rate";
 	if (modifier == "cold res") return "cold resistance";
 	if (modifier == "hot res") return "hot resistance";
@@ -552,6 +579,7 @@ void ModifierAddUserModifier(int [string] desired_modifiers, string current_modi
 
 void main(string arguments)
 {
+	__starting_meat = my_meat();
 	print_html("Gain v" + __gain_version);
 	if (arguments == "" || arguments.contains_text("help"))
 	{
@@ -566,6 +594,9 @@ void main(string arguments)
 	int [string] desired_modifiers;
 	int desired_min_turns = 1;
 	
+	
+	float maximum_efficiency = 0.0;
+	boolean maximum_efficiency_known = false;
 	int modifier_value = 0;
 	string current_modifier;
 	string [int] arguments_split = arguments.split_string(" ");
@@ -576,6 +607,17 @@ void main(string arguments)
 		{
 			desired_min_turns = MAX(1, modifier_value);
 			modifier_value = 0;
+		}
+		if (argument == "eff" || argument == "efficiency")
+		{
+			maximum_efficiency_known = true;
+			maximum_efficiency = modifier_value;
+			modifier_value = 0.0;
+		}
+		if (argument == "maxmeatspent")
+		{
+			__maximum_meat_to_spend = MIN(modifier_value, __maximum_meat_to_spend);
+			modifier_value = 0.0;
 		}
 		if (is_integer(argument))
 		{
@@ -593,6 +635,8 @@ void main(string arguments)
 			current_modifier += argument;
 		}
 	}
+	if (__maximum_meat_to_spend != 100000)
+		print_html("Spending up to " + __maximum_meat_to_spend + " meat.");
 	if (current_modifier != "" && modifier_value != 0)
 	{
 		ModifierAddUserModifier(desired_modifiers, current_modifier, modifier_value);
@@ -638,6 +682,8 @@ void main(string arguments)
 		modifier_settings.minimum_value = minimum;
 		modifier_settings.minimum_turns_wanted = desired_min_turns;
 		modifier_settings.reasonable_turns_wanted = MAX(desired_min_turns, min(my_adventures(), 20));
+		modifier_settings.maximum_efficiency_set = maximum_efficiency_known;
+		modifier_settings.maximum_efficiency = maximum_efficiency;
 		ModifierUpkeepEffects(modifier_settings);
 	}
 	
