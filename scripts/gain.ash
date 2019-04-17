@@ -111,7 +111,7 @@ void initialiseModifiers()
 initialiseModifiers();
 
 //FIXME support asdon
-string __gain_version = "1.0.5";
+string __gain_version = "1.0.6";
 boolean __gain_setting_confirm = false;
 
 boolean [item] __modify_blocked_items = $items[M-242,snake,sparkler,Mer-kin strongjuice,Mer-kin smartjuice,Mer-kin cooljuice];
@@ -125,6 +125,11 @@ if (my_class() == $class[turtle tamer])
 {
 	foreach s in $skills[Blessing of the Storm Tortoise,Blessing of She-Who-Was,Blessing of the War Snapper]
 		__modify_blocked_skills[s] = true;
+}
+else if (my_class() == $class[pastamancer])
+{
+	foreach t in $thralls[]
+		__modify_blocked_skills[t.skill] = true;
 }
 
 static
