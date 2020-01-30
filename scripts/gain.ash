@@ -111,14 +111,15 @@ void initialiseModifiers()
 initialiseModifiers();
 
 //FIXME support asdon
-string __gain_version = "1.0.6";
+string __gain_version = "1.0.7";
 boolean __gain_setting_confirm = false;
 
-boolean [item] __modify_blocked_items = $items[M-242,snake,sparkler,Mer-kin strongjuice,Mer-kin smartjuice,Mer-kin cooljuice];
+//we don't use the pirate items because mafia doesn't acquire them properly - if pirate tract is 301 in the mall, it'll try to get it from the store, and fail
+boolean [item] __modify_blocked_items = $items[M-242,snake,sparkler,Mer-kin strongjuice,Mer-kin smartjuice,Mer-kin cooljuice,pirate tract,pirate pamphlet,pirate brochure,elven suicide capsule];
 boolean [skill] __modify_blocked_skills;
 
 int __maximum_meat_to_spend = 100000;
-
+boolean __setting_silent = false;
 int __starting_meat = -1;
 int __meat_spent = 0;
 if (my_class() == $class[turtle tamer])
@@ -131,6 +132,9 @@ else if (my_class() == $class[pastamancer])
 	foreach t in $thralls[]
 		__modify_blocked_skills[t.skill] = true;
 }
+
+__modify_blocked_skills[to_skill("Visit your Favorite Bird")] = true; //once/day
+__modify_blocked_skills[to_skill("Seek out a Bird")] = true; //limited a day
 
 static
 {
@@ -320,6 +324,24 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 		possible_sources[possible_sources.count()] = entry;
 	}
 	
+	/*if ($effect[Become Superficially interested].have_effect() > 0 && settings.modifier == "combat rate")
+	{
+		print("Switching to Become Intensely interested.");
+		visit_url("charsheet.php?action=newyouinterest");
+	}
+	if ($effect[Become Intensely interested].have_effect() > 0 && settings.modifier == "-combat")
+	{
+		print("Switching to Become Superficially interested.");
+		visit_url("charsheet.php?action=newyouinterest");
+	}
+	if (settings.modifier == "combat rate" && get_property("_horsery") == "dark horse")
+	{
+		print("Returning your dark horse.");
+		visit_url("place.php?whichplace=town_right&action=town_horsery");
+		visit_url("choice.php?whichchoice=1266&option=5");
+	}*/
+	
+	boolean can_access_mall = get_property("autoSatisfyWithMall").to_boolean();
 	int breakout = 500;
 	float last_loop_value = -1.0;
 	boolean first = true;
@@ -377,7 +399,7 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 		foreach key, entry in possible_sources
 		{
 			if (key >= 20) break;
-			if (entry.type == MODIFIER_UPKEEP_ENTRY_TYPE_ITEM && entry.it.tradeable)
+			if (entry.type == MODIFIER_UPKEEP_ENTRY_TYPE_ITEM && entry.it.tradeable && can_access_mall)
 				entry.it.mall_price();
 		}
 		if (want_positive)
@@ -398,16 +420,17 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 					continue;
 				if (!entry.it.tradeable && entry.it.available_amount() == 0)
 					continue;
-				if (entry.it.tradeable && entry.it.mall_price() >= 100000) //too expensive
+				if (entry.it.available_amount() == 0 && !can_access_mall) continue; //no mall, no service
+				if (entry.it.tradeable && entry.it.historical_price() >= 100000) //too expensive
 					continue;
-				if (entry.it.tradeable)
+				if (entry.it.tradeable && can_access_mall)
 				{
 					meat_cost = entry.it.mall_price();
 					if (__meat_spent + meat_cost > __maximum_meat_to_spend) continue;
 				}
 				if (!entry.it.tradeable && !entry.it.reusable)
 				{
-					if (my_id() == 1557284)
+					if (my_id() == 1557284 && false)
 						print_html("<font color=\"red\">examine " + entry.it + "</font>"); //don't use motivational posters, but cheap wind-up clocks are fine
 					continue;
 				}
@@ -415,10 +438,11 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 			}
 			if (entry.type == MODIFIER_UPKEEP_ENTRY_TYPE_SKILL)
 			{
-				if (!entry.s.have_skill())
+				if (!entry.s.have_skill() || !entry.s.is_unrestricted())
 					continue;
 				if (entry.s.adv_cost() > 0) continue;
 				if (entry.s.mp_cost() > my_maxmp()) continue;
+				if (entry.s.hp_cost() >= my_hp()) continue; //we might not have restore, so...
 				if ($skills[The Ballad of Richie Thingfinder,Benetton's Medley of Diversity,Elron's Explosive Etude,Chorale of Companionship,Prelude of Precision] contains entry.s && (my_class() != $class[accordion thief] || my_level() < 15)) continue; //'
 				if (__modify_blocked_skills[entry.s]) continue;
 			}
@@ -468,7 +492,8 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 			{
 				break;
 			}
-			print_html(entry.ModifierUpkeepEntryDescription() + ": " + entry_efficiency + " efficiency");
+			if (!__setting_silent)
+				print_html(entry.ModifierUpkeepEntryDescription() + ": " + entry_efficiency + " efficiency");
 			
 			if (__gain_setting_confirm)
 			{
@@ -482,10 +507,17 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 			int before_effect = entry.e.have_effect();
 			int amount = MAX(1, ceil(to_float(settings.minimum_turns_wanted - entry.e.have_effect()) / MAX(1.0, to_float(entry.turns_gotten_from_source))));
 			amount = MIN(10, amount);
+			
 			if (entry.type == MODIFIER_UPKEEP_ENTRY_TYPE_ITEM)
 				use(amount, entry.it);
 			if (entry.type == MODIFIER_UPKEEP_ENTRY_TYPE_SKILL)
-				use_skill(amount, entry.s);
+			{
+				int times_can_cast = 10;
+				if (entry.s.hp_cost() > 0)
+					times_can_cast = max(1, (my_hp() - 1) / entry.s.hp_cost());
+				
+				use_skill(min(times_can_cast, amount), entry.s);
+			}
 			int after_effect = entry.e.have_effect();
 			if (after_effect == before_effect)
 			{
@@ -537,12 +569,15 @@ void ModifierUpkeepEffects(int [string] minimum_modifiers_want)
 
 void ModifierOutputExampleUsage()
 {
+	if (__setting_silent) return;
+	print_html("<strong>silent</strong>: don't output text (useful in libraries)");
 	print_html("");
 	print_html("Example usage:");
 	print_html("<strong>gain 400 initiative</strong>: buff to 400 initiative, as efficiently as possible");
 	print_html("<strong>gain 20 familiar weight 50 turns</strong>: buff to 20 familiar weight, for a minimum of 50 turns");
 	print_html("<strong>gain 400 init 20 familiar weight 300 muscle 50 turns</strong>: buff familiar weight up to 20, initiative up to 400, and muscle up to 300, for 50 turns.");
 	print_html("<strong>gain 10000 monster level 10000 maxmeatspent</strong>: spend 10k meat on +monster level");
+	print_html("<strong>gain meat 1 eff</strong>: gain meat with a certain efficiency level");
 }
 
 string ModifierConvertUserModifierToMafia(string modifier)
@@ -566,12 +601,18 @@ string ModifierConvertUserModifierToMafia(string modifier)
 	if (modifier == "sleaze res") return "sleaze resistance";
 	if (modifier == "stench res") return "stench resistance";
 	if (modifier == "spooky res") return "spooky resistance";
+	if (modifier == "mainstat") return my_primestat().to_string();
 	return modifier;
 }
 
 
 void ModifierAddUserModifier(int [string] desired_modifiers, string current_modifier, int modifier_value)
 {
+	if (modifier_value == 0.0)
+	{
+		modifier_value = 1000000.0;
+		__maximum_meat_to_spend = 10000;
+	}
 	string converted_modifier = ModifierConvertUserModifierToMafia(current_modifier);
 	if (converted_modifier == "all res")
 	{
@@ -585,7 +626,6 @@ void ModifierAddUserModifier(int [string] desired_modifiers, string current_modi
 void main(string arguments)
 {
 	__starting_meat = my_meat();
-	print_html("Gain v" + __gain_version);
 	if (arguments == "" || arguments.contains_text("help"))
 	{
 		ModifierOutputExampleUsage();
@@ -608,21 +648,27 @@ void main(string arguments)
 	foreach key, argument in arguments_split
 	{
 		if (argument == "") continue;
+		boolean ignore_text = false;
 		if (argument == "turns" || argument == "turn")
 		{
 			desired_min_turns = MAX(1, modifier_value);
 			modifier_value = 0;
+			ignore_text = true;
 		}
 		if (argument == "eff" || argument == "efficiency")
 		{
 			maximum_efficiency_known = true;
 			maximum_efficiency = modifier_value;
 			modifier_value = 0.0;
+			ignore_text = true;
 		}
+		if (argument == "silent")
+			__setting_silent = true;
 		if (argument == "maxmeatspent")
 		{
 			__maximum_meat_to_spend = MIN(modifier_value, __maximum_meat_to_spend);
 			modifier_value = 0.0;
+			ignore_text = true;
 		}
 		if (is_integer(argument))
 		{
@@ -633,6 +679,10 @@ void main(string arguments)
 			}
 			modifier_value = argument.to_int();
 		}
+		else if (ignore_text)
+		{
+			current_modifier = "";
+		}
 		else
 		{
 			if (current_modifier != "")
@@ -640,9 +690,13 @@ void main(string arguments)
 			current_modifier += argument;
 		}
 	}
-	if (__maximum_meat_to_spend != 100000)
+	if (!__setting_silent)
+		print_html("Gain v" + __gain_version);
+	if (__maximum_meat_to_spend != 100000 && !__setting_silent)
 		print_html("Spending up to " + __maximum_meat_to_spend + " meat.");
-	if (current_modifier != "" && modifier_value != 0)
+	if (maximum_efficiency_known && !__setting_silent)
+		print_html(maximum_efficiency + " efficiency");
+	if (current_modifier != "")
 	{
 		ModifierAddUserModifier(desired_modifiers, current_modifier, modifier_value);
 		current_modifier = "";
@@ -675,8 +729,9 @@ void main(string arguments)
 		output_string.append(" turns");
 	}
 	output_string.append("...");
-	print_html(output_string);
-	if (desired_min_turns != 1)
+	if (!__setting_silent)
+		print_html(output_string);
+	if (desired_min_turns != 1 && !__setting_silent)
 		print_html("Warning: we haven't yet implemented checking buffs that will run out. Sorry.");
 	
 	
