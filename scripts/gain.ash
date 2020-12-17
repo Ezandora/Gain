@@ -111,12 +111,13 @@ void initialiseModifiers()
 initialiseModifiers();
 
 //FIXME support asdon
-string __gain_version = "1.0.8";
+string __gain_version = "1.0.9";
 boolean __gain_setting_confirm = false;
 
 //we don't use the pirate items because mafia doesn't acquire them properly - if pirate tract is 301 in the mall, it'll try to get it from the store, and fail
 boolean [item] __modify_blocked_items = $items[M-242,snake,sparkler,Mer-kin strongjuice,Mer-kin smartjuice,Mer-kin cooljuice,pirate tract,pirate pamphlet,pirate brochure,elven suicide capsule];
 boolean [skill] __modify_blocked_skills;
+boolean [effect] __blocked_effects;
 
 int __maximum_meat_to_spend = 100000;
 boolean __setting_silent = false;
@@ -134,6 +135,12 @@ else if (my_class() == $class[pastamancer])
 	foreach t in $thralls[]
 		__modify_blocked_skills[t.skill] = true;
 }
+
+boolean [effect] __limited_effects;
+__limited_effects[to_effect("Blessing of your favorite Bird")] = true;
+__limited_effects[to_effect("Blessing of the Bird")] = true;
+__limited_effects[to_effect("Triple-Sized")] = true;
+__limited_effects[to_effect("Invisible Avatar")] = true;
 
 
 static
@@ -452,6 +459,7 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 		boolean did_execute_one = false;
 		foreach key, entry in possible_sources
 		{
+			if (__blocked_effects contains entry.e) continue;
 			int meat_cost = 0;
 			if (entry.type == MODIFIER_UPKEEP_ENTRY_TYPE_ITEM)
 			{
@@ -577,7 +585,15 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 				refresh_status();
 				after_effect = entry.e.have_effect();
 				if (after_effect == before_effect)
-					abort("Mafia bug: " + entry.ModifierUpkeepEntryDescription() + " did not gain any turns.");
+				{
+					if (__limited_effects contains entry.e)
+					{
+						__blocked_effects[entry.e] = true;
+						continue;
+					}
+					else
+						abort("Mafia bug: " + entry.ModifierUpkeepEntryDescription() + " did not gain any turns.");
+				}
 			}
 			else if (before_effect != 0 && after_effect < 1000)
 				allow_overriding_modifier_value_safety = true;
@@ -798,8 +814,6 @@ void main(string arguments)
 	output_string.append("...");
 	if (!__setting_silent)
 		print_html(output_string);
-	if (desired_min_turns != 1 && !__setting_silent)
-		print_html("Warning: we haven't yet implemented checking buffs that will run out. Sorry.");
 	
 	
 	foreach modifier, minimum in desired_modifiers
