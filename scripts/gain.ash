@@ -111,7 +111,7 @@ void initialiseModifiers()
 initialiseModifiers();
 
 //FIXME support asdon
-string __gain_version = "1.0.7";
+string __gain_version = "1.0.8";
 boolean __gain_setting_confirm = false;
 
 //we don't use the pirate items because mafia doesn't acquire them properly - if pirate tract is 301 in the mall, it'll try to get it from the store, and fail
@@ -120,6 +120,8 @@ boolean [skill] __modify_blocked_skills;
 
 int __maximum_meat_to_spend = 100000;
 boolean __setting_silent = false;
+boolean __setting_ignore_percentages = false;
+boolean __setting_allow_limited_buffs = false;
 int __starting_meat = -1;
 int __meat_spent = 0;
 if (my_class() == $class[turtle tamer])
@@ -133,8 +135,6 @@ else if (my_class() == $class[pastamancer])
 		__modify_blocked_skills[t.skill] = true;
 }
 
-__modify_blocked_skills[to_skill("Visit your Favorite Bird")] = true; //once/day
-__modify_blocked_skills[to_skill("Seek out a Bird")] = true; //limited a day
 
 static
 {
@@ -147,6 +147,13 @@ static
 	{
 		__accordion_thief_songs_effects[s.to_effect()] = true;
 	}
+}
+
+
+float gain_fabs(float v)
+{
+	if (v >= 0.0) return v;
+	return -v;
 }
 
 void initialiseMutuallyExclusiveEffects()
@@ -165,16 +172,28 @@ void initialiseMutuallyExclusiveEffects()
 }
 initialiseMutuallyExclusiveEffects();
 
+float my_active_basestat(stat s)
+{
+	float v = my_basestat(s);
+	float limit = numeric_modifier(s + " Limit");
+	
+	if (limit > 0 && limit < v)
+		v = limit;
+	if (v < 0) v = 1;
+	return v;
+}
 
 float numeric_modifier_including_percentages_on_base_modifiers(effect e, string modifier)
 {
 	float v = e.numeric_modifier(modifier);
+	if (__setting_ignore_percentages)
+		return v;
 	if (modifier ≈ "muscle")
-		v += e.numeric_modifier("muscle percent") / 100.0 * my_basestat($stat[muscle]);
+		v += e.numeric_modifier("muscle percent") / 100.0 * my_active_basestat($stat[muscle]);
 	if (modifier ≈ "mysticality")
-		v += e.numeric_modifier("mysticality percent") / 100.0 * my_basestat($stat[mysticality]);
+		v += e.numeric_modifier("mysticality percent") / 100.0 * my_active_basestat($stat[mysticality]);
 	if (modifier ≈ "moxie")
-		v += e.numeric_modifier("moxie percent") / 100.0 * my_basestat($stat[moxie]);
+		v += e.numeric_modifier("moxie percent") / 100.0 * my_active_basestat($stat[moxie]);
 	if (modifier ≈ "maximum mp")
 	{
 		//FIXME use maximum MP percent properly? I just made this formula up, it's wrong. so wrong.
@@ -188,6 +207,15 @@ float numeric_modifier_including_percentages_on_base_modifiers(effect e, string 
 	return v;
 }
 
+
+void blockLimitedBuffs()
+{
+	if (__setting_allow_limited_buffs) return;
+	__modify_blocked_skills[to_skill("Visit your Favorite Bird")] = true; //once/day
+	__modify_blocked_skills[to_skill("Seek out a Bird")] = true; //limited a day
+	__modify_blocked_skills[to_skill("CHEAT CODE: Triple Size")] = true;
+	__modify_blocked_skills[to_skill("CHEAT CODE: Invisible Avatar")] = true;
+}
 
 
 Record ModifierUpkeepSettings
@@ -275,6 +303,14 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 		if (!__modifiers_for_effect[e][settings.modifier]) continue;
 		if (!can_interact() && it.available_amount() + it.creatable_amount() == 0) continue;
 		
+		if (!can_interact() && it.available_amount() == 0 && it.creatable_amount() != 0)
+		{
+			//FIXME "does this cost a turn to make"
+			string craft_type = it.craft_type();
+			if (craft_type.contains_text("Cooking (fancy)"))
+				continue;
+		}
+		
 		if (__modify_blocked_items[it]) continue;
 		if ($items[Shrieking Weasel holo-record,Power-Guy 2000 holo-record,Lucky Strikes holo-record,EMD holo-record,Superdrifter holo-record,The Pigs holo-record,Drunk Uncles holo-record] contains it && my_path() != "Nuclear Autumn") continue;
 		
@@ -343,7 +379,8 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 	
 	boolean can_access_mall = get_property("autoSatisfyWithMall").to_boolean();
 	int breakout = 500;
-	float last_loop_value = -1.0;
+	float last_loop_value = -1.0;	
+	boolean allow_overriding_modifier_value_safety = false;
 	boolean first = true;
 	while (breakout > 0)
 	{
@@ -380,12 +417,13 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 		}
 		else
 		{
-			if (last_loop_value == relevant_value_for_modifier)
+			if (last_loop_value == relevant_value_for_modifier && !allow_overriding_modifier_value_safety)
 			{
 				print("Stopping trying to gain a buff. Value of modifier " + settings.modifier + " is " +relevant_value_for_modifier + ", same as the previous " + relevant_value_for_modifier + ".", "red");
 				break;
 			}
 		}
+		allow_overriding_modifier_value_safety = false;
 		last_loop_value = relevant_value_for_modifier;
 			
 		if (satisfied)
@@ -410,6 +448,7 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 		/*for i from 0 to 20
 			print_html("possible_sources[" + i + "] ( " + possible_sources[i].ModifierUpkeepEntryEfficiency(settings) + " ) = " + possible_sources[i].to_json());
 		abort("well?");*/
+		allow_overriding_modifier_value_safety = false;
 		boolean did_execute_one = false;
 		foreach key, entry in possible_sources
 		{
@@ -445,6 +484,17 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 				if (entry.s.hp_cost() >= my_hp()) continue; //we might not have restore, so...
 				if ($skills[The Ballad of Richie Thingfinder,Benetton's Medley of Diversity,Elron's Explosive Etude,Chorale of Companionship,Prelude of Precision] contains entry.s && (my_class() != $class[accordion thief] || my_level() < 15)) continue; //'
 				if (__modify_blocked_skills[entry.s]) continue;
+				
+				
+				if ($skills[Blessing of the Storm Tortoise,Blessing of She-Who-Was,Blessing of the War Snapper] contains entry.s && my_class() != $class[turtle tamer])
+				{
+					//Do not cast the blessings if we have one active already; this causes bouncing when gaining all stats at once.
+					if ($effect[Disdain of the War Snapper].have_effect() > 0 || $effect[Disdain of She-Who-Was].have_effect() > 0 || $effect[Disdain of the Storm Tortoise].have_effect() > 0)
+					{
+						
+						continue;
+					}
+				}
 			}
 			//Limit also applies to recordings:
 			if (__accordion_thief_songs_effects contains entry.e && entry.e.have_effect() == 0)
@@ -488,7 +538,7 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 			if (entry.e.numeric_modifier_including_percentages_on_base_modifiers(settings.modifier) == 0.0) continue;
 			if (entry.e.have_effect() >= settings.minimum_turns_wanted) continue;
 			float entry_efficiency = entry.ModifierUpkeepEntryEfficiency(settings);
-			if (settings.maximum_efficiency_set && settings.maximum_efficiency < entry_efficiency)
+			if (settings.maximum_efficiency_set && settings.maximum_efficiency < gain_fabs(entry_efficiency))
 			{
 				break;
 			}
@@ -529,6 +579,8 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 				if (after_effect == before_effect)
 					abort("Mafia bug: " + entry.ModifierUpkeepEntryDescription() + " did not gain any turns.");
 			}
+			else if (before_effect != 0 && after_effect < 1000)
+				allow_overriding_modifier_value_safety = true;
 			__meat_spent += meat_cost;
 			did_execute_one = true;
 			break;
@@ -571,6 +623,7 @@ void ModifierOutputExampleUsage()
 {
 	if (__setting_silent) return;
 	print_html("<strong>silent</strong>: don't output text (useful in libraries)");
+	print_html("<strong>limited</strong>: allow limited buffs");
 	print_html("");
 	print_html("Example usage:");
 	print_html("<strong>gain 400 initiative</strong>: buff to 400 initiative, as efficiently as possible");
@@ -662,8 +715,21 @@ void main(string arguments)
 			modifier_value = 0.0;
 			ignore_text = true;
 		}
+		if (argument == "absolute" || argument == "nopercentage")
+		{
+			__setting_ignore_percentages = true;
+			ignore_text = true;
+		}
+		if (argument == "limited")
+		{
+			__setting_allow_limited_buffs = true;
+			ignore_text = true;
+		}
 		if (argument == "silent")
+		{
 			__setting_silent = true;
+			ignore_text = true;
+		}
 		if (argument == "maxmeatspent")
 		{
 			__maximum_meat_to_spend = MIN(modifier_value, __maximum_meat_to_spend);
@@ -690,6 +756,7 @@ void main(string arguments)
 			current_modifier += argument;
 		}
 	}
+	blockLimitedBuffs();
 	if (!__setting_silent)
 		print_html("Gain v" + __gain_version);
 	if (__maximum_meat_to_spend != 100000 && !__setting_silent)
