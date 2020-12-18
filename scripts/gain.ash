@@ -111,7 +111,7 @@ void initialiseModifiers()
 initialiseModifiers();
 
 //FIXME support asdon
-string __gain_version = "1.0.9";
+string __gain_version = "1.0.10";
 boolean __gain_setting_confirm = false;
 
 //we don't use the pirate items because mafia doesn't acquire them properly - if pirate tract is 301 in the mall, it'll try to get it from the store, and fail
@@ -504,6 +504,8 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 					}
 				}
 			}
+			if ($skills[CHEAT CODE: Triple Size,CHEAT CODE: Invisible Avatar] contains entry.s && $item[powerful glove].available_amount() == 0)
+				continue;
 			//Limit also applies to recordings:
 			if (__accordion_thief_songs_effects contains entry.e && entry.e.have_effect() == 0)
 			{
@@ -574,7 +576,17 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 				if (entry.s.hp_cost() > 0)
 					times_can_cast = max(1, (my_hp() - 1) / entry.s.hp_cost());
 				
-				use_skill(min(times_can_cast, amount), entry.s);
+				item [slot] saved_equipment;
+				if ($skills[CHEAT CODE: Triple Size,CHEAT CODE: Invisible Avatar] contains entry.s && !$Item[powerful glove].have_equipped())
+				{
+					saved_equipment[$slot[acc1]] = $slot[acc1].equipped_item();
+					equip($item[powerful glove], $slot[acc1]);
+				}
+				boolean result = use_skill(min(times_can_cast, amount), entry.s);
+				foreach s, it in saved_equipment
+				{
+					equip(it, s);
+				}
 			}
 			int after_effect = entry.e.have_effect();
 			if (after_effect == before_effect)
