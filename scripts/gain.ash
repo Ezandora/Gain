@@ -6,6 +6,8 @@ static
 	boolean [effect][string] __modifiers_for_effect;
 	boolean [string][effect] __effects_for_modifiers;
 	boolean [effect] __effect_contains_non_constant_modifiers; //meaning, numeric_modifier() cannot be cached
+	boolean [effect][item] __items_for_effect;
+	boolean [effect][skill] __skills_for_effect;
 }
 void initialiseModifiers()
 {
@@ -96,6 +98,18 @@ void initialiseModifiers()
         }
         //return;
 	}
+	foreach it in $items[]
+	{
+		effect e = it.effect_modifier("effect");
+		if (e == $effect[none]) continue;
+		__items_for_effect[e][it] = true;
+	}
+	foreach s in $skills[]
+	{
+		effect e = s.to_effect();
+		if (e == $effect[none]) continue;
+		__skills_for_effect[e][s] = true;
+	}
 	/*print_html("Types:");
 	foreach type in modifier_types
 	{
@@ -111,7 +125,7 @@ void initialiseModifiers()
 initialiseModifiers();
 
 //FIXME support asdon
-string __gain_version = "1.0.10";
+string __gain_version = "1.1";
 boolean __gain_setting_confirm = false;
 
 //we don't use the pirate items because mafia doesn't acquire them properly - if pirate tract is 301 in the mall, it'll try to get it from the store, and fail
@@ -196,11 +210,23 @@ float numeric_modifier_including_percentages_on_base_modifiers(effect e, string 
 	if (__setting_ignore_percentages)
 		return v;
 	if (modifier ≈ "muscle")
-		v += e.numeric_modifier("muscle percent") / 100.0 * my_active_basestat($stat[muscle]);
+	{
+		float stat_percent = e.numeric_modifier("muscle percent");
+		if (stat_percent != 0.0)
+			v += stat_percent / 100.0 * my_active_basestat($stat[muscle]);
+	}
 	if (modifier ≈ "mysticality")
-		v += e.numeric_modifier("mysticality percent") / 100.0 * my_active_basestat($stat[mysticality]);
+	{
+		float stat_percent = e.numeric_modifier("mysticality percent");
+		if (stat_percent != 0.0)
+			v += stat_percent / 100.0 * my_active_basestat($stat[mysticality]);
+	}
 	if (modifier ≈ "moxie")
-		v += e.numeric_modifier("moxie percent") / 100.0 * my_active_basestat($stat[moxie]);
+	{
+		float stat_percent = e.numeric_modifier("moxie percent");
+		if (stat_percent != 0.0)
+			v += stat_percent / 100.0 * my_active_basestat($stat[moxie]);
+	}
 	if (modifier ≈ "maximum mp")
 	{
 		//FIXME use maximum MP percent properly? I just made this formula up, it's wrong. so wrong.
@@ -222,6 +248,13 @@ void blockLimitedBuffs()
 	__modify_blocked_skills[to_skill("Seek out a Bird")] = true; //limited a day
 	__modify_blocked_skills[to_skill("CHEAT CODE: Triple Size")] = true;
 	__modify_blocked_skills[to_skill("CHEAT CODE: Invisible Avatar")] = true;
+	
+	foreach skill_name in $strings[Feel Pride,Feel Excitement,Feel Hatred,Feel Lonely,Feel Nervous,Feel Envy,Feel Disappointed,Feel Lost,Feel Nostalgic,Feel Peaceful,Feel Superior]
+	{
+		skill s = skill_name.to_skill();
+		if (s == $skill[none]) continue;
+		__modify_blocked_skills[s] = true;
+	}
 }
 
 
@@ -272,6 +305,15 @@ string ModifierUpkeepEntryDescription(ModifierUpkeepEntry entry)
 
 float ModifierUpkeepEntryEfficiency(ModifierUpkeepEntry entry, ModifierUpkeepSettings settings)
 {
+	//FIXME change this calculation; problem:
+	//+100% myst on 100 base myst versus 1000 base myst have wildly different efficiencies
+	//use a percentage-based improvement system again
+	//maybe it should be something like, be willing to spend X meat to get +1% of an improvement per turn
+	//issues: -combat at zero, +item at zero, etc
+	//how do we "scale"?
+	//maybe use a "base" value depending on what it is? idk
+	
+	
 	float cost = entry.it.historical_price() + entry.s.mp_cost() * 2; //meat per MP estimate
 	if (entry.it != $item[none] && !entry.it.tradeable) //FIXME approx
 		cost += 100.0;
@@ -303,68 +345,78 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 	boolean want_positive = settings.minimum_value >= 0;
 	
 	//Generate items:
-	foreach it in $items[]
+	
+	//foreach it in $items[]
+	boolean within_path_g_lover = my_path() == "G-Lover";
+	boolean within_nuclear_autumn = my_path() == "Nuclear Autumn";
+	foreach e in __effects_for_modifiers[settings.modifier]
 	{
-		effect e = it.effect_modifier("effect");
-		if (e == $effect[none]) continue;
-		if (!__modifiers_for_effect[e][settings.modifier]) continue;
-		if (!can_interact() && it.available_amount() + it.creatable_amount() == 0) continue;
-		
-		if (!can_interact() && it.available_amount() == 0 && it.creatable_amount() != 0)
+		foreach it in __items_for_effect[e]
 		{
-			//FIXME "does this cost a turn to make"
-			string craft_type = it.craft_type();
-			if (craft_type.contains_text("Cooking (fancy)"))
+			//effect e = it.effect_modifier("effect");
+			//if (e == $effect[none]) continue;
+			//if (!__modifiers_for_effect[e][settings.modifier]) continue;
+			if (!can_interact())
+			{
+				//within ronin:
+				if (it.available_amount() + it.creatable_amount() == 0) continue;
+		
+				if (it.available_amount() == 0 && it.creatable_amount() != 0)
+				{
+					//FIXME "does this cost a turn to make"
+					string craft_type = it.craft_type();
+					if (craft_type.contains_text("Cooking (fancy)"))
+						continue;
+				}
+			}
+		
+			if (__modify_blocked_items[it]) continue;
+			if ($items[Shrieking Weasel holo-record,Power-Guy 2000 holo-record,Lucky Strikes holo-record,EMD holo-record,Superdrifter holo-record,The Pigs holo-record,Drunk Uncles holo-record] contains it && !within_nuclear_autumn) continue;
+		
+			if (it.fullness > 0 || it.inebriety > 0 || it.spleen > 0) //FIXME allow such things?
 				continue;
+			float modifier_not_quite_right = e.numeric_modifier_including_percentages_on_base_modifiers(settings.modifier);
+			if (modifier_not_quite_right < 0.0 && want_positive)
+				continue;
+			if (modifier_not_quite_right > 0.0 && !want_positive)
+				continue;
+			if (my_path() == "G-Lover")
+			{
+				if (!it.contains_text("g") && !it.contains_text("G"))
+					continue;
+				if (!e.contains_text("g") && !e.contains_text("G"))
+					continue;
+			}
+			ModifierUpkeepEntry entry;
+			entry.e = e;
+			entry.type = MODIFIER_UPKEEP_ENTRY_TYPE_ITEM;
+			entry.it = it;
+			entry.turns_gotten_from_source = it.numeric_modifier("effect duration");
+			possible_sources[possible_sources.count()] = entry;
 		}
-		
-		if (__modify_blocked_items[it]) continue;
-		if ($items[Shrieking Weasel holo-record,Power-Guy 2000 holo-record,Lucky Strikes holo-record,EMD holo-record,Superdrifter holo-record,The Pigs holo-record,Drunk Uncles holo-record] contains it && my_path() != "Nuclear Autumn") continue;
-		
-		if (it.fullness > 0 || it.inebriety > 0 || it.spleen > 0) //FIXME allow such things?
-			continue;
-		float modifier_not_quite_right = e.numeric_modifier_including_percentages_on_base_modifiers(settings.modifier);
-		if (modifier_not_quite_right < 0.0 && want_positive)
-			continue;
-		if (modifier_not_quite_right > 0.0 && !want_positive)
-			continue;
-		if (my_path() == "G-Lover")
+		//Generate skills:
+		foreach s in __skills_for_effect[e]
 		{
-			if (!it.contains_text("g") && !it.contains_text("G"))
-				continue;
-			if (!e.contains_text("g") && !e.contains_text("G"))
-				continue;
-		}
-		ModifierUpkeepEntry entry;
-		entry.e = e;
-		entry.type = MODIFIER_UPKEEP_ENTRY_TYPE_ITEM;
-		entry.it = it;
-		entry.turns_gotten_from_source = it.numeric_modifier("effect duration");
-		possible_sources[possible_sources.count()] = entry;
-	}
-	//Generate skills:
-	foreach s in $skills[]
-	{
-		effect e = s.to_effect();
-		if (e == $effect[none]) continue;
-		if (!__modifiers_for_effect[e][settings.modifier]) continue;
+			//effect e = s.to_effect();
+			//if (e == $effect[none]) continue;
+			//if (!__modifiers_for_effect[e][settings.modifier]) continue;
 		
-		float modifier_not_quite_right = e.numeric_modifier_including_percentages_on_base_modifiers(settings.modifier);
-		if (modifier_not_quite_right < 0.0 && want_positive)
-			continue;
-		if (modifier_not_quite_right > 0.0 && !want_positive)
-			continue;
-		if (my_path() == "G-Lover")
-		{
-			if (!s.contains_text("g") && !s.contains_text("G"))
+			float modifier_not_quite_right = e.numeric_modifier_including_percentages_on_base_modifiers(settings.modifier);
+			if (modifier_not_quite_right < 0.0 && want_positive)
 				continue;
+			if (modifier_not_quite_right > 0.0 && !want_positive)
+				continue;
+			if (within_path_g_lover && !s.contains_text("g") && !s.contains_text("G"))
+			{
+				continue;
+			}
+			ModifierUpkeepEntry entry;
+			entry.e = e;
+			entry.type = MODIFIER_UPKEEP_ENTRY_TYPE_SKILL;
+			entry.s = s;
+			entry.turns_gotten_from_source = s.turns_per_cast();
+			possible_sources[possible_sources.count()] = entry;
 		}
-		ModifierUpkeepEntry entry;
-		entry.e = e;
-		entry.type = MODIFIER_UPKEEP_ENTRY_TYPE_SKILL;
-		entry.s = s;
-		entry.turns_gotten_from_source = s.turns_per_cast();
-		possible_sources[possible_sources.count()] = entry;
 	}
 	
 	/*if ($effect[Become Superficially interested].have_effect() > 0 && settings.modifier == "combat rate")
@@ -463,8 +515,6 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 			int meat_cost = 0;
 			if (entry.type == MODIFIER_UPKEEP_ENTRY_TYPE_ITEM)
 			{
-				if (entry.it.fullness > 0 || entry.it.inebriety > 0 || entry.it.spleen > 0) //FIXME allow such things?
-					continue;
 				if (!entry.it.tradeable && entry.it.available_amount() == 0)
 					continue;
 				if (entry.it.available_amount() == 0 && !can_access_mall) continue; //no mall, no service
@@ -712,10 +762,6 @@ void main(string arguments)
 		ModifierOutputExampleUsage();
 		return;
 	}
-	if (!can_interact())
-	{
-		print_html("We're not in ronin, so we might break. I didn't test for this.");
-	}
 	
 	int [string] desired_modifiers;
 	int desired_min_turns = 1;
@@ -797,36 +843,41 @@ void main(string arguments)
 		current_modifier = "";
 	}
 	
+	if (!can_interact() && !__setting_silent)
+	{
+		print_html("We're not in ronin, so we might break. I didn't test for this.");
+	}
 	
-	if (desired_modifiers.count() == 0)
+	if (desired_modifiers.count() == 0 && !__setting_silent)
 	{
 		print_html("Did not recognise \"" + arguments + "\".");
 		ModifierOutputExampleUsage();
 		return;
 	}
-	buffer output_string;
-	output_string.append("Buffing ");
-	boolean first = true;
-	foreach modifier, value in desired_modifiers
-	{
-		if (first)
-			first = false;
-		else
-			output_string.append(", ");
-		output_string.append(modifier);
-		output_string.append(" up to ");
-		output_string.append(value);
-	}
-	if (desired_min_turns != 1)
-	{
-		output_string.append(", for ");
-		output_string.append(desired_min_turns);
-		output_string.append(" turns");
-	}
-	output_string.append("...");
 	if (!__setting_silent)
+	{
+		buffer output_string;
+		output_string.append("Buffing ");
+		boolean first = true;
+		foreach modifier, value in desired_modifiers
+		{
+			if (first)
+				first = false;
+			else
+				output_string.append(", ");
+			output_string.append(modifier);
+			output_string.append(" up to ");
+			output_string.append(value);
+		}
+		if (desired_min_turns != 1)
+		{
+			output_string.append(", for ");
+			output_string.append(desired_min_turns);
+			output_string.append(" turns");
+		}
+		output_string.append("...");
 		print_html(output_string);
-	
+	}
 	
 	foreach modifier, minimum in desired_modifiers
 	{
