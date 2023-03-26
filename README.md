@@ -6,7 +6,7 @@ How do I use it?
 First, install it by running this command in KoLmafia's graphical CLI:
 
 <pre>
-git checkout Gain Release
+git checkout Ezandora/Gain Release
 </pre>
 Once it's installed, go to the Graphical CLI, and type "gain help".
 
