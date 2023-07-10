@@ -125,13 +125,14 @@ void initialiseModifiers()
 initialiseModifiers();
 
 //FIXME support asdon
-string __gain_version = "1.1";
+string __gain_version = "1.1.1";
 boolean __gain_setting_confirm = false;
 
 //we don't use the pirate items because mafia doesn't acquire them properly - if pirate tract is 301 in the mall, it'll try to get it from the store, and fail
-boolean [item] __modify_blocked_items = $items[M-242,snake,sparkler,Mer-kin strongjuice,Mer-kin smartjuice,Mer-kin cooljuice,pirate tract,pirate pamphlet,pirate brochure,elven suicide capsule];
+boolean [item] __modify_blocked_items = $items[M-242,snake,sparkler,Mer-kin strongjuice,Mer-kin smartjuice,Mer-kin cooljuice,pirate tract,pirate pamphlet,pirate brochure,elven suicide capsule,ghost dog chow];
 boolean [skill] __modify_blocked_skills;
 boolean [effect] __blocked_effects;
+boolean [effect] __fixed_blocked_effects = $effects[cowrruption,Visions of the Deep Dark Deeps];
 
 int __maximum_meat_to_spend = 100000;
 boolean __setting_silent = false;
@@ -204,35 +205,39 @@ float my_active_basestat(stat s)
 	return v;
 }
 
-float numeric_modifier_including_percentages_on_base_modifiers(effect e, string modifier)
+float numeric_modifier_including_percentages_on_base_modifiers(effect e, string modifier_name)
 {
-	float v = e.numeric_modifier(modifier);
+	if (modifier_name ≈ "any")
+	{
+		return 1.0;
+	}
+	float v = e.numeric_modifier(modifier_name);
 	if (__setting_ignore_percentages)
 		return v;
-	if (modifier ≈ "muscle")
+	if (modifier_name ≈ "muscle")
 	{
 		float stat_percent = e.numeric_modifier("muscle percent");
 		if (stat_percent != 0.0)
 			v += stat_percent / 100.0 * my_active_basestat($stat[muscle]);
 	}
-	if (modifier ≈ "mysticality")
+	if (modifier_name ≈ "mysticality")
 	{
 		float stat_percent = e.numeric_modifier("mysticality percent");
 		if (stat_percent != 0.0)
 			v += stat_percent / 100.0 * my_active_basestat($stat[mysticality]);
 	}
-	if (modifier ≈ "moxie")
+	if (modifier_name ≈ "moxie")
 	{
 		float stat_percent = e.numeric_modifier("moxie percent");
 		if (stat_percent != 0.0)
 			v += stat_percent / 100.0 * my_active_basestat($stat[moxie]);
 	}
-	if (modifier ≈ "maximum mp")
+	if (modifier_name ≈ "maximum mp")
 	{
 		//FIXME use maximum MP percent properly? I just made this formula up, it's wrong. so wrong.
 		v += numeric_modifier_including_percentages_on_base_modifiers(e, "mysticality") / 100.0 * (1.0 + numeric_modifier("Maximum MP Percent") / 100.0);
 	}
-	if (modifier ≈ "maximum hp")
+	if (modifier_name ≈ "maximum hp")
 	{
 		//FIXME use maximum HP percent properly? I just made this formula up, it's wrong. so wrong.
 		v += numeric_modifier_including_percentages_on_base_modifiers(e, "muscle") / 100.0 * (1.0 + numeric_modifier("Maximum HP Percent") / 100.0);
@@ -260,7 +265,7 @@ void blockLimitedBuffs()
 
 Record ModifierUpkeepSettings
 {
-	string modifier;
+	string modifier_name;
 	float minimum_value;
 	int minimum_turns_wanted;
 	
@@ -323,7 +328,7 @@ float ModifierUpkeepEntryEfficiency(ModifierUpkeepEntry entry, ModifierUpkeepSet
 		//print_html("•" + entry.s + ": "  + cost);
 	if (cost <= 0.0) return 0.0;
 	float turns_per_use = MIN(settings.reasonable_turns_wanted, entry.turns_gotten_from_source);
-	float modifier_gained = MIN(settings.minimum_value - numeric_modifier(settings.modifier), entry.e.numeric_modifier_including_percentages_on_base_modifiers(settings.modifier));
+	float modifier_gained = MIN(settings.minimum_value - numeric_modifier(settings.modifier_name), entry.e.numeric_modifier_including_percentages_on_base_modifiers(settings.modifier_name));
 	
 	float combined = (modifier_gained * turns_per_use);
 	if (combined == 0.0)
@@ -339,7 +344,7 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 	if (settings.reasonable_turns_wanted == 0) settings.reasonable_turns_wanted = 20;
 	if (__starting_meat < 0) __starting_meat = my_meat();
 	
-	settings.modifier = settings.modifier.to_lower_case();
+	settings.modifier_name = settings.modifier_name.to_lower_case();
 	
 	ModifierUpkeepEntry [int] possible_sources;
 	boolean want_positive = settings.minimum_value >= 0;
@@ -347,15 +352,23 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 	//Generate items:
 	
 	//foreach it in $items[]
-	boolean within_path_g_lover = my_path() == "G-Lover";
-	boolean within_nuclear_autumn = my_path() == "Nuclear Autumn";
-	foreach e in __effects_for_modifiers[settings.modifier]
+	boolean within_path_g_lover = my_path().name == "G-Lover";
+	boolean within_nuclear_autumn = my_path().name == "Nuclear Autumn";
+	
+	boolean [effect] effects_for_modifier = __effects_for_modifiers[settings.modifier_name];
+	
+	if (settings.modifier_name ≈ "any")
+	{
+		effects_for_modifier = $effects[];
+	}
+	
+	foreach e in effects_for_modifier
 	{
 		foreach it in __items_for_effect[e]
 		{
 			//effect e = it.effect_modifier("effect");
 			//if (e == $effect[none]) continue;
-			//if (!__modifiers_for_effect[e][settings.modifier]) continue;
+			//if (!__modifiers_for_effect[e][settings.modifier_name]) continue;
 			if (!can_interact())
 			{
 				//within ronin:
@@ -375,12 +388,12 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 		
 			if (it.fullness > 0 || it.inebriety > 0 || it.spleen > 0) //FIXME allow such things?
 				continue;
-			float modifier_not_quite_right = e.numeric_modifier_including_percentages_on_base_modifiers(settings.modifier);
+			float modifier_not_quite_right = e.numeric_modifier_including_percentages_on_base_modifiers(settings.modifier_name);
 			if (modifier_not_quite_right < 0.0 && want_positive)
 				continue;
 			if (modifier_not_quite_right > 0.0 && !want_positive)
 				continue;
-			if (my_path() == "G-Lover")
+			if (my_path().name == "G-Lover")
 			{
 				if (!it.contains_text("g") && !it.contains_text("G"))
 					continue;
@@ -399,9 +412,9 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 		{
 			//effect e = s.to_effect();
 			//if (e == $effect[none]) continue;
-			//if (!__modifiers_for_effect[e][settings.modifier]) continue;
+			//if (!__modifiers_for_effect[e][settings.modifier_name]) continue;
 		
-			float modifier_not_quite_right = e.numeric_modifier_including_percentages_on_base_modifiers(settings.modifier);
+			float modifier_not_quite_right = e.numeric_modifier_including_percentages_on_base_modifiers(settings.modifier_name);
 			if (modifier_not_quite_right < 0.0 && want_positive)
 				continue;
 			if (modifier_not_quite_right > 0.0 && !want_positive)
@@ -419,17 +432,17 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 		}
 	}
 	
-	/*if ($effect[Become Superficially interested].have_effect() > 0 && settings.modifier == "combat rate")
+	/*if ($effect[Become Superficially interested].have_effect() > 0 && settings.modifier_name == "combat rate")
 	{
 		print("Switching to Become Intensely interested.");
 		visit_url("charsheet.php?action=newyouinterest");
 	}
-	if ($effect[Become Intensely interested].have_effect() > 0 && settings.modifier == "-combat")
+	if ($effect[Become Intensely interested].have_effect() > 0 && settings.modifier_name == "-combat")
 	{
 		print("Switching to Become Superficially interested.");
 		visit_url("charsheet.php?action=newyouinterest");
 	}
-	if (settings.modifier == "combat rate" && get_property("_horsery") == "dark horse")
+	if (settings.modifier_name == "combat rate" && get_property("_horsery") == "dark horse")
 	{
 		print("Returning your dark horse.");
 		visit_url("place.php?whichplace=town_right&action=town_horsery");
@@ -441,24 +454,27 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 	float last_loop_value = -1.0;	
 	boolean allow_overriding_modifier_value_safety = false;
 	boolean first = true;
+	
+	boolean [effect] dynamic_blocked_effects;
+
 	while (breakout > 0)
 	{
 		breakout -= 1;
 		
-		float relevant_value_for_modifier = numeric_modifier(settings.modifier);
+		float relevant_value_for_modifier = numeric_modifier(settings.modifier_name);
 		
-		if (settings.modifier ≈ "muscle")
+		if (settings.modifier_name ≈ "muscle")
 			relevant_value_for_modifier = my_buffedstat($stat[muscle]);
-		if (settings.modifier ≈ "mysticality")
+		if (settings.modifier_name ≈ "mysticality")
 			relevant_value_for_modifier = my_buffedstat($stat[mysticality]);
-		if (settings.modifier ≈ "moxie")
+		if (settings.modifier_name ≈ "moxie")
 			relevant_value_for_modifier = my_buffedstat($stat[moxie]);
-		if (settings.modifier ≈ "maximum mp")
+		if (settings.modifier_name ≈ "maximum mp")
 			relevant_value_for_modifier = my_maxmp();
-		if (settings.modifier ≈ "maximum hp")
+		if (settings.modifier_name ≈ "maximum hp")
 			relevant_value_for_modifier = my_maxhp();
-		if (settings.modifier ≈ "familiar weight")
-			relevant_value_for_modifier = numeric_modifier(settings.modifier) + my_familiar().familiar_weight(); //FIXME support feasted familiars, because that's a complete pain
+		if (settings.modifier_name ≈ "familiar weight")
+			relevant_value_for_modifier = numeric_modifier(settings.modifier_name) + my_familiar().familiar_weight(); //FIXME support feasted familiars, because that's a complete pain
 			
 			
 		boolean satisfied = true;
@@ -476,9 +492,9 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 		}
 		else
 		{
-			if (last_loop_value == relevant_value_for_modifier && !allow_overriding_modifier_value_safety)
+			if (last_loop_value == relevant_value_for_modifier && !allow_overriding_modifier_value_safety && !(settings.modifier_name ≈ "any"))
 			{
-				print("Stopping trying to gain a buff. Value of modifier " + settings.modifier + " is " +relevant_value_for_modifier + ", same as the previous " + relevant_value_for_modifier + ".", "red");
+				print("Stopping trying to gain a buff. Value of modifier " + settings.modifier_name + " is " +relevant_value_for_modifier + ", same as the previous " + relevant_value_for_modifier + ".", "red");
 				break;
 			}
 		}
@@ -512,7 +528,10 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 		foreach key, entry in possible_sources
 		{
 			if (__blocked_effects contains entry.e) continue;
+			if (__fixed_blocked_effects[entry.e]) continue;
+			if (dynamic_blocked_effects[entry.e]) continue;
 			int meat_cost = 0;
+			boolean turn_into_wish = false;
 			if (entry.type == MODIFIER_UPKEEP_ENTRY_TYPE_ITEM)
 			{
 				if (!entry.it.tradeable && entry.it.available_amount() == 0)
@@ -523,6 +542,11 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 				if (entry.it.tradeable && can_access_mall)
 				{
 					meat_cost = entry.it.mall_price();
+					if (meat_cost >= 50000 && meat_cost >= $item[pocket wish].mall_price())
+					{
+						turn_into_wish = true;
+						meat_cost = $item[pocket wish].mall_price();
+					}
 					if (__meat_spent + meat_cost > __maximum_meat_to_spend) continue;
 				}
 				if (!entry.it.tradeable && !entry.it.reusable)
@@ -542,7 +566,7 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 				if (entry.s.hp_cost() >= my_hp()) continue; //we might not have restore, so...
 				if ($skills[The Ballad of Richie Thingfinder,Benetton's Medley of Diversity,Elron's Explosive Etude,Chorale of Companionship,Prelude of Precision] contains entry.s && (my_class() != $class[accordion thief] || my_level() < 15)) continue; //'
 				if (__modify_blocked_skills[entry.s]) continue;
-				
+				//if (entry.s.dailylimit > 0 && entry.s.dailylimit < entry.s.timescast) continue; //do not cast past the daily limit, need verification
 				
 				if ($skills[Blessing of the Storm Tortoise,Blessing of She-Who-Was,Blessing of the War Snapper] contains entry.s && my_class() != $class[turtle tamer])
 				{
@@ -595,7 +619,7 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 				if (should_continue)
 					continue;
 			}
-			if (entry.e.numeric_modifier_including_percentages_on_base_modifiers(settings.modifier) == 0.0) continue;
+			if (entry.e.numeric_modifier_including_percentages_on_base_modifiers(settings.modifier_name) == 0.0) continue;
 			if (entry.e.have_effect() >= settings.minimum_turns_wanted) continue;
 			float entry_efficiency = entry.ModifierUpkeepEntryEfficiency(settings);
 			if (settings.maximum_efficiency_set && settings.maximum_efficiency < gain_fabs(entry_efficiency))
@@ -618,9 +642,15 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 			int amount = MAX(1, ceil(to_float(settings.minimum_turns_wanted - entry.e.have_effect()) / MAX(1.0, to_float(entry.turns_gotten_from_source))));
 			amount = MIN(10, amount);
 			
-			if (entry.type == MODIFIER_UPKEEP_ENTRY_TYPE_ITEM)
+			if (turn_into_wish)
+			{
+				abort("wish for " + entry.e);
+			}
+			else if (entry.type == MODIFIER_UPKEEP_ENTRY_TYPE_ITEM)
+			{
 				use(amount, entry.it);
-			if (entry.type == MODIFIER_UPKEEP_ENTRY_TYPE_SKILL)
+			}
+			else if (entry.type == MODIFIER_UPKEEP_ENTRY_TYPE_SKILL)
 			{
 				int times_can_cast = 10;
 				if (entry.s.hp_cost() > 0)
@@ -632,6 +662,7 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 					saved_equipment[$slot[acc1]] = $slot[acc1].equipped_item();
 					equip($item[powerful glove], $slot[acc1]);
 				}
+				print_html("casting " + entry.s);
 				boolean result = use_skill(min(times_can_cast, amount), entry.s);
 				foreach s, it in saved_equipment
 				{
@@ -648,7 +679,7 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 				after_effect = entry.e.have_effect();
 				if (after_effect == before_effect)
 				{
-					if (__limited_effects contains entry.e)
+					if (__limited_effects contains entry.e || (entry.s.class == $class[accordion thief]))
 					{
 						__blocked_effects[entry.e] = true;
 						continue;
@@ -659,6 +690,10 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 			}
 			else if (before_effect != 0 && after_effect < 1000)
 				allow_overriding_modifier_value_safety = true;
+			if (after_effect >= settings.minimum_turns_wanted)
+			{
+				dynamic_blocked_effects[entry.e] = true;
+			}
 			__meat_spent += meat_cost;
 			did_execute_one = true;
 			break;
@@ -677,10 +712,10 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 //ModifierUpkeepEffects(modifiers);
 void ModifierUpkeepEffects(float [string] minimum_modifiers_want)
 {
-	foreach modifier, minimum in minimum_modifiers_want
+	foreach modifier_name, minimum in minimum_modifiers_want
 	{
 		ModifierUpkeepSettings modifier_settings;
-		modifier_settings.modifier = modifier;
+		modifier_settings.modifier_name = modifier_name;
 		modifier_settings.minimum_value = minimum;
 		modifier_settings.minimum_turns_wanted = 1;
 		modifier_settings.reasonable_turns_wanted = min(my_adventures(), 20);
@@ -690,9 +725,9 @@ void ModifierUpkeepEffects(float [string] minimum_modifiers_want)
 void ModifierUpkeepEffects(int [string] minimum_modifiers_want)
 {
 	float [string] converted;
-	foreach modifier, minimum in minimum_modifiers_want
+	foreach modifier_name, minimum in minimum_modifiers_want
 	{
-		converted[modifier] = minimum;
+		converted[modifier_name] = minimum;
 	}
 	ModifierUpkeepEffects(converted);
 }
@@ -711,29 +746,29 @@ void ModifierOutputExampleUsage()
 	print_html("<strong>gain meat 1 eff</strong>: gain meat with a certain efficiency level");
 }
 
-string ModifierConvertUserModifierToMafia(string modifier)
+string ModifierConvertUserModifierToMafia(string modifier_name)
 {
-	modifier = modifier.to_lower_case();
-	if (modifier == "init") return "initiative";
-	if (modifier == "item") return "item drop";
-	if (modifier == "meat") return "meat drop";
-	if (modifier == "mus") return "muscle";
-	if (modifier == "mys") return "mysticality";
-	if (modifier == "myst") return "mysticality";
-	if (modifier == "mox") return "moxie";
-	if (modifier == "da") return "damage absorption";
-	if (modifier == "dr") return "damage reduction";
-	if (modifier == "mp") return "maximum mp";
-	if (modifier == "hp") return "maximum hp";
-	if (modifier == "ml") return "monster level";
-	if (modifier == "combat") return "combat rate";
-	if (modifier == "cold res") return "cold resistance";
-	if (modifier == "hot res") return "hot resistance";
-	if (modifier == "sleaze res") return "sleaze resistance";
-	if (modifier == "stench res") return "stench resistance";
-	if (modifier == "spooky res") return "spooky resistance";
-	if (modifier == "mainstat") return my_primestat().to_string();
-	return modifier;
+	modifier_name = modifier_name.to_lower_case();
+	if (modifier_name == "init") return "initiative";
+	if (modifier_name == "item") return "item drop";
+	if (modifier_name == "meat") return "meat drop";
+	if (modifier_name == "mus") return "muscle";
+	if (modifier_name == "mys") return "mysticality";
+	if (modifier_name == "myst") return "mysticality";
+	if (modifier_name == "mox") return "moxie";
+	if (modifier_name == "da") return "damage absorption";
+	if (modifier_name == "dr") return "damage reduction";
+	if (modifier_name == "mp") return "maximum mp";
+	if (modifier_name == "hp") return "maximum hp";
+	if (modifier_name == "ml") return "monster level";
+	if (modifier_name == "combat") return "combat rate";
+	if (modifier_name == "cold res") return "cold resistance";
+	if (modifier_name == "hot res") return "hot resistance";
+	if (modifier_name == "sleaze res") return "sleaze resistance";
+	if (modifier_name == "stench res") return "stench resistance";
+	if (modifier_name == "spooky res") return "spooky resistance";
+	if (modifier_name == "mainstat") return my_primestat().to_string();
+	return modifier_name;
 }
 
 
@@ -859,13 +894,13 @@ void main(string arguments)
 		buffer output_string;
 		output_string.append("Buffing ");
 		boolean first = true;
-		foreach modifier, value in desired_modifiers
+		foreach modifier_name, value in desired_modifiers
 		{
 			if (first)
 				first = false;
 			else
 				output_string.append(", ");
-			output_string.append(modifier);
+			output_string.append(modifier_name);
 			output_string.append(" up to ");
 			output_string.append(value);
 		}
@@ -879,10 +914,10 @@ void main(string arguments)
 		print_html(output_string);
 	}
 	
-	foreach modifier, minimum in desired_modifiers
+	foreach modifier_name, minimum in desired_modifiers
 	{
 		ModifierUpkeepSettings modifier_settings;
-		modifier_settings.modifier = modifier;
+		modifier_settings.modifier_name = modifier_name;
 		modifier_settings.minimum_value = minimum;
 		modifier_settings.minimum_turns_wanted = desired_min_turns;
 		modifier_settings.reasonable_turns_wanted = MAX(desired_min_turns, min(my_adventures(), 20));
