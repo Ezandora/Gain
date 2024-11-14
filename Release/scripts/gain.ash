@@ -542,7 +542,7 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 				if (entry.it.tradeable && can_access_mall)
 				{
 					meat_cost = entry.it.mall_price();
-					if (meat_cost >= 50000 && meat_cost >= $item[pocket wish].mall_price())
+					if (!effect_modifier(entry.it, "effect").attributes.contains_text("nohookah") && meat_cost >= 50000 && meat_cost >= $item[pocket wish].mall_price())
 					{
 						turn_into_wish = true;
 						meat_cost = $item[pocket wish].mall_price();
