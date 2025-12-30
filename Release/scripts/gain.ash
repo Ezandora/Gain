@@ -190,7 +190,8 @@ void initialiseMutuallyExclusiveEffects()
 	__mutually_exclusive_effect_sets[__mutually_exclusive_effect_sets.count()] = $effects[Song of the North,Song of Slowness,Song of Starch,Song of Sauce,Song of Bravado];
 	__mutually_exclusive_effect_sets[__mutually_exclusive_effect_sets.count()] = $effects[purple tongue,green tongue,orange tongue,red tongue,blue tongue];
 	__mutually_exclusive_effect_sets[__mutually_exclusive_effect_sets.count()] = $effects[Puissant Pressure, Perspicacious Pressure, Pulchritudinous Pressure, Possessive Pressure, Perceptive Pressure, Proficient Pressure, Pneumatic];
-	
+	__mutually_exclusive_effect_sets[__mutually_exclusive_effect_sets.count()] = $effects[Spirit of Cayenne, Spirit of Peppermint, Spirit of Garlic, Spirit of Wormwood, Spirit of Bacon Grease];
+
 	foreach key in __mutually_exclusive_effect_sets
 	{
 		foreach e in __mutually_exclusive_effect_sets[key]
