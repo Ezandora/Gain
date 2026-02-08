@@ -158,12 +158,11 @@ void initialiseModifiers()
 initialiseModifiers();
 
 //FIXME support asdon
-string __gain_version = "1.2.4";
+string __gain_version = "1.2.5";
 boolean __gain_setting_confirm = false;
 
 //we don't use the pirate items because mafia doesn't acquire them properly - if pirate tract is 301 in the mall, it'll try to get it from the store, and fail
-boolean [skill] __modify_blocked_skills;
-boolean [skill] __blocked_skills = $skills[Drench Yourself in Sweat, Spirit of Peppermint, Spirit of Cayenne, Spirit of Garlic, Spirit of Wormwood, Spirit of Bacon Grease];
+boolean [skill] __blocked_skills;
 boolean [effect] __blocked_effects;
 boolean [item] __blocked_items;
 boolean [effect] __fixed_blocked_effects = $effects[cowrruption,Visions of the Deep Dark Deeps];
@@ -186,12 +185,29 @@ void globalSetup()
 	if (my_class() == $class[turtle tamer])
 	{
 		foreach s in $skills[Blessing of the Storm Tortoise,Blessing of She-Who-Was,Blessing of the War Snapper]
-			__modify_blocked_skills[s] = true;
+			__blocked_skills[s] = true;
 	}
 	else if (my_class() == $class[pastamancer])
 	{
 		foreach t in $thralls[]
-			__modify_blocked_skills[t.skill] = true;
+			__blocked_skills[t.skill] = true;
+	}
+	foreach s in $skills[Drench Yourself in Sweat, Spirit of Peppermint, Spirit of Cayenne, Spirit of Garlic, Spirit of Wormwood, Spirit of Bacon Grease]
+	{
+		__blocked_skills[s] = true;
+	}
+	
+	string [skill] skills_tied_to_boolean_preferences;
+	skills_tied_to_boolean_preferences[to_skill("Heartstone: %banish")] = "heartstoneBanishUnlocked";
+	skills_tied_to_boolean_preferences[to_skill("Heartstone: %buff")] = "heartstoneBuffUnlocked";
+	skills_tied_to_boolean_preferences[to_skill("Heartstone: %kill")] = "heartstoneKillUnlocked";
+	skills_tied_to_boolean_preferences[to_skill("Heartstone: %luck")] = "heartstoneLuckUnlocked";
+	skills_tied_to_boolean_preferences[to_skill("Heartstone: %pals")] = "heartstonePalsUnlocked";
+	skills_tied_to_boolean_preferences[to_skill("Heartstone: %stun")] = "heartstoneStunUnlocked";
+	foreach s, preference_name in skills_tied_to_boolean_preferences
+	{
+		if (get_property(preference_name).to_boolean() == false)
+			__blocked_skills[s] = true;
 	}
 	
 	__limited_effects[to_effect("Blessing of your favorite Bird")] = true;
@@ -204,6 +220,7 @@ void globalSetup()
 		__blocked_items[$item[crystallized pumpkin spice]] = true;
 	foreach it in $items[M-242,snake,sparkler,Mer-kin strongjuice,Mer-kin smartjuice,Mer-kin cooljuice,pirate tract,pirate pamphlet,pirate brochure,elven suicide capsule,ghost dog chow,Yummy Tummy bean]
 		__blocked_items[it] = true;
+	
 }
 globalSetup();
 
@@ -300,22 +317,22 @@ float numeric_modifier_including_percentages_on_base_modifiers(effect e, string 
 void blockLimitedBuffs()
 {
 	if (__setting_allow_limited_buffs) return;
-	/*__modify_blocked_skills[to_skill("Visit your Favorite Bird")] = true; //once/day
-	__modify_blocked_skills[to_skill("Seek out a Bird")] = true; //limited a day
-	__modify_blocked_skills[to_skill("CHEAT CODE: Triple Size")] = true;
-	__modify_blocked_skills[to_skill("CHEAT CODE: Invisible Avatar")] = true;
+	/*__blocked_skills[to_skill("Visit your Favorite Bird")] = true; //once/day
+	__blocked_skills[to_skill("Seek out a Bird")] = true; //limited a day
+	__blocked_skills[to_skill("CHEAT CODE: Triple Size")] = true;
+	__blocked_skills[to_skill("CHEAT CODE: Invisible Avatar")] = true;
 	
 	foreach skill_name in $strings[Feel Pride,Feel Excitement,Feel Hatred,Feel Lonely,Feel Nervous,Feel Envy,Feel Disappointed,Feel Lost,Feel Nostalgic,Feel Peaceful,Feel Superior]
 	{
 		skill s = skill_name.to_skill();
 		if (s == $skill[none]) continue;
-		__modify_blocked_skills[s] = true;
+		__blocked_skills[s] = true;
 	}*/
 	//generic:
 	foreach s in $skills[]
 	{
 		if (s.dailylimit > 0 || s.dailylimitpref != "")
-			__modify_blocked_skills[s] = true;
+			__blocked_skills[s] = true;
 	}
 }
 
@@ -669,7 +686,7 @@ void ModifierUpkeepEffects(ModifierUpkeepSettings settings)
 				if (entry.s.hp_cost() >= my_hp()) continue; //we might not have restore, so...
 				if (entry.s.soulsauce_cost() > my_soulsauce()) continue;
 				if ($skills[The Ballad of Richie Thingfinder,Benetton's Medley of Diversity,Elron's Explosive Etude,Chorale of Companionship,Prelude of Precision] contains entry.s && (my_class() != $class[accordion thief] || my_level() < 15)) continue; //'
-				if (__modify_blocked_skills[entry.s] || __blocked_skills[entry.s]) continue;
+				if (__blocked_skills[entry.s]) continue;
 				//if (entry.s.dailylimit > 0 && entry.s.dailylimit < entry.s.timescast) continue; //do not cast past the daily limit, need verification
 				if ($skills[Blessing of the Storm Tortoise,Blessing of She-Who-Was,Blessing of the War Snapper] contains entry.s && my_class() != $class[turtle tamer])
 				{
